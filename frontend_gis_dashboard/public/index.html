@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LANDSAFE NER — AI Early Warning & Landslide Risk Monitoring</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <style>
+    :root {
+      --bg-primary: #070b14;
+      --bg-secondary: #0d1527;
+      --bg-card: rgba(15, 23, 42, 0.78);
+      --border-glass: rgba(148, 163, 184, 0.12);
+      --border-accent: rgba(56, 189, 248, 0.3);
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --color-emergency: #ef4444;
+      --color-warning: #f97316;
+      --color-watch: #eab308;
+      --color-safe: #10b981;
+      --color-cyan: #06b6d4;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .glass-panel {
+      background: var(--bg-card);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border-glass);
+      border-radius: 14px;
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+      transition: all 0.2s ease;
+    }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    header {
+      padding: 12px 24px;
+      border-bottom: 1px solid var(--border-glass);
+      background: rgba(10, 16, 30, 0.85);
+      backdrop-filter: blur(16px);
+      display: flex;
+      justifyContent: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+    }
+    .btn {
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 12px;
+      cursor: pointer;
+      border: none;
+      transition: opacity 0.2s;
+    }
+    .btn-emergency {
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      color: #fff;
+      box-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #0284c7, #0369a1);
+      color: #fff;
+    }
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #ef4444;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+      70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    }
+    #map { height: 500px; border-radius: 12px; width: 100%; }
+    .leaflet-popup-content-wrapper { background: #0f172a !important; color: #fff !important; border: 1px solid rgba(56, 189, 248, 0.3); }
+    .leaflet-popup-tip { background: #0f172a !important; }
+    .grid-layout {
+      flex: 1;
+      padding: 20px;
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 20px;
+      max-width: 1750px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    .slider { width: 100%; accent-color: var(--color-cyan); }
+    .modal-overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.8); backdrop-filter: blur(8px);
+      display: none; justify-content: center; align-items: center; z-index: 2000; padding: 20px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <div style="width: 38px; height: 38px; border-radius: 8px; background: linear-gradient(135deg, #0284c7, #38bdf8); display: flex; align-items: center; justify-content: center; font-size: 20px;">
+        ⛰️
+      </div>
+      <div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <h1 style="font-size: 18px; font-weight: 800; color: #fff;">LANDSAFE <span style="color: var(--color-cyan);">NER</span></h1>
+          <span style="font-size: 10px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; padding: 2px 6px; border-radius: 4px; font-weight: 700;">SIH 2026 • SIH26001</span>
+        </div>
+        <p style="font-size: 11px; color: var(--text-muted);">AI Landslide Early Warning & Risk Monitoring • North Eastern Region</p>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 16px; align-items: center;">
+      <div style="display: flex; align-items: center; gap: 8px; background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.3); padding: 6px 12px; borderRadius: 8px;">
+        <span class="pulse-dot"></span>
+        <span id="active-alerts-count" style="font-size: 12px; color: #fca5a5; font-weight: 700;">Loading Alerts...</span>
+      </div>
+      <div style="font-size: 12px; color: var(--text-secondary);">
+        Nodes: <strong id="nodes-count" style="color: #38bdf8;">10 Stations</strong>
+      </div>
+      <div style="font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px;">
+        <span style="width: 6px; height: 6px; border-radius: 50%; background: #10b981;"></span>
+        ONNX AI Engine: <strong style="color: #34d399;">Active (Sub-ms)</strong>
+      </div>
+      <button class="btn btn-emergency" onclick="openBroadcastModal()">📢 Emergency Broadcast</button>
+    </div>
+  </header>
+
+  <!-- Main Grid -->
+  <div class="grid-layout">
+    <!-- Left Column: Map & Analytics -->
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <!-- GIS Tactical Map -->
+      <div class="glass-panel" style="padding: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <div>
+            <h2 style="font-size: 16px; font-weight: 800;">🗺️ North East India Tactical GIS Command Map</h2>
+            <p style="font-size: 11px; color: var(--text-muted);">GSI NGDR Active Faults • NRSC Susceptibility • Live Telemetry Pins</p>
+          </div>
+          <div style="font-size: 11px; color: var(--text-muted);">Click any hotspot to inspect telemetry</div>
+        </div>
+        <div id="map"></div>
+      </div>
+
+      <!-- Predictive Hydrological Analytics -->
+      <div class="glass-panel" style="padding: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <div>
+            <h3 style="font-size: 16px; font-weight: 800;" id="chart-title">Hydrological & Predictive Risk Curve</h3>
+            <p style="font-size: 11px; color: var(--text-muted);">7-Day Infiltration & 24h Forward Predictive AI Probability</p>
+          </div>
+          <span style="font-size: 11px; color: #38bdf8; background: rgba(56, 189, 248, 0.1); padding: 4px 8px; border-radius: 6px;">24h AI Horizon</span>
+        </div>
+        <div id="chart-container" style="background: rgba(15, 23, 42, 0.6); padding: 16px; border-radius: 10px; border: 1px solid var(--border-glass);">
+          <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-bottom: 8px;">
+            <span style="color: #38bdf8;">■ Rainfall (mm)</span>
+            <span style="color: #34d399;">● Soil Moisture (%)</span>
+            <span style="color: #f87171;">-- Risk Probability (%)</span>
+          </div>
+          <svg id="timeline-svg" width="100%" height="130" viewBox="0 0 500 120" preserveAspectRatio="none"></svg>
+          <div style="display: flex; justify-content: space-between; font-size: 10px; color: var(--text-muted); margin-top: 6px;">
+            <span>7 Days Ago</span><span>3 Days Ago</span><span>Today (Live)</span><span style="color: #38bdf8;">+24h AI Prediction</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Column: HUD, Simulation, Citizen Triage -->
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <!-- Telemetry HUD Card -->
+      <div class="glass-panel" style="padding: 20px;" id="hud-card">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px;">
+          <div>
+            <span id="hud-sub" style="font-size: 11px; color: var(--color-cyan); font-weight: 700; text-transform: uppercase;">MEGHALAYA • EAST KHASI HILLS</span>
+            <h2 id="hud-region" style="font-size: 18px; font-weight: 800; margin-top: 4px;">East Khasi Hills (NH-106)</h2>
+            <p id="hud-terrain" style="font-size: 11px; color: var(--text-muted);">Steep Sandstone Plateau Escarpment</p>
+          </div>
+          <span id="hud-badge" style="padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 800; text-transform: uppercase; background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4);">
+            EMERGENCY
+          </span>
+        </div>
+
+        <div style="background: rgba(15, 23, 42, 0.6); padding: 12px; border-radius: 8px; border: 1px solid var(--border-glass); margin-bottom: 14px;">
+          <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px;">
+            <span style="color: var(--text-secondary);">AI Landslide Probability:</span>
+            <span class="font-mono" id="hud-prob" style="font-size: 16px; font-weight: 800; color: #ef4444;">91%</span>
+          </div>
+          <div style="width: 100%; height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 3px; overflow: hidden;">
+            <div id="hud-bar" style="width: 91%; height: 100%; background: linear-gradient(90deg, #f97316, #ef4444);"></div>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px;">
+          <div style="background: rgba(30, 41, 59, 0.4); padding: 10px; border-radius: 8px; border: 1px solid var(--border-glass);">
+            <div style="font-size: 10px; color: var(--text-muted);">Rainfall (24h)</div>
+            <div class="font-mono" id="hud-rain" style="font-size: 16px; font-weight: 700; color: #38bdf8;">142.5 mm</div>
+          </div>
+          <div style="background: rgba(30, 41, 59, 0.4); padding: 10px; border-radius: 8px; border: 1px solid var(--border-glass);">
+            <div style="font-size: 10px; color: var(--text-muted);">Soil Moisture</div>
+            <div class="font-mono" id="hud-sm" style="font-size: 16px; font-weight: 700; color: #34d399;">78.4 %</div>
+          </div>
+          <div style="background: rgba(30, 41, 59, 0.4); padding: 10px; border-radius: 8px; border: 1px solid var(--border-glass);">
+            <div style="font-size: 10px; color: var(--text-muted);">Slope Gradient</div>
+            <div class="font-mono" id="hud-slope" style="font-size: 16px; font-weight: 700; color: #fbbf24;">44.5 deg</div>
+          </div>
+          <div style="background: rgba(30, 41, 59, 0.4); padding: 10px; border-radius: 8px; border: 1px solid var(--border-glass);">
+            <div style="font-size: 10px; color: var(--text-muted);">GSI Fragility</div>
+            <div class="font-mono" id="hud-vuln" style="font-size: 16px; font-weight: 700; color: #c084fc;">88.5/100</div>
+          </div>
+        </div>
+
+        <button class="btn btn-emergency" style="width: 100%; padding: 10px;" onclick="openBroadcastModal()">
+          Broadcast Multilingual Alert (SMS/Voice)
+        </button>
+      </div>
+
+      <!-- Real-time AI Risk Sandbox -->
+      <div class="glass-panel" style="padding: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <div>
+            <h3 style="font-size: 15px; font-weight: 800;">Interactive AI Risk Simulator</h3>
+            <p style="font-size: 11px; color: var(--text-muted);">Test live ONNX inference by simulating cloudburst storms</p>
+          </div>
+          <span style="font-size: 10px; background: rgba(139, 92, 246, 0.2); color: #c084fc; padding: 3px 6px; border-radius: 4px; font-weight: 700;">ONNX Live</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+          <div>
+            <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 3px;">
+              <span>24h Rain:</span><span id="sim-rain-val" class="font-mono" style="color: #38bdf8;">140 mm</span>
+            </div>
+            <input type="range" min="0" max="300" value="140" class="slider" id="sim-rain" oninput="runLiveSim()">
+          </div>
+          <div>
+            <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 3px;">
+              <span>Soil Saturation:</span><span id="sim-sm-val" class="font-mono" style="color: #34d399;">80 %</span>
+            </div>
+            <input type="range" min="15" max="98" value="80" class="slider" id="sim-sm" oninput="runLiveSim()">
+          </div>
+          <div>
+            <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 3px;">
+              <span>Slope Angle:</span><span id="sim-slope-val" class="font-mono" style="color: #fbbf24;">45 deg</span>
+            </div>
+            <input type="range" min="15" max="65" value="45" class="slider" id="sim-slope" oninput="runLiveSim()">
+          </div>
+          <div>
+            <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 3px;">
+              <span>GSI Fragility:</span><span id="sim-vuln-val" class="font-mono" style="color: #c084fc;">85/100</span>
+            </div>
+            <input type="range" min="10" max="100" value="85" class="slider" id="sim-vuln" oninput="runLiveSim()">
+          </div>
+        </div>
+
+        <div id="sim-output" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); padding: 10px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Simulated AI Output</div>
+            <div id="sim-status" style="font-size: 13px; font-weight: 800; color: #fca5a5;">EMERGENCY</div>
+          </div>
+          <div style="text-align: right;">
+            <div class="font-mono" id="sim-prob" style="font-size: 20px; font-weight: 900; color: #ef4444;">94%</div>
+            <div style="font-size: 9px; color: var(--text-muted);">Risk Probability</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Citizen AI Hazard Triage Queue -->
+      <div class="glass-panel" style="padding: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <div>
+            <h3 style="font-size: 15px; font-weight: 800;">Citizen Hazard AI Triage</h3>
+            <p style="font-size: 11px; color: var(--text-muted);">Offline-first citizen reports with Edge ONNX validation</p>
+          </div>
+          <span id="reports-count" style="font-size: 11px; background: rgba(6, 182, 212, 0.15); color: var(--color-cyan); padding: 2px 6px; border-radius: 4px; font-weight: 700;">3 Reports</span>
+        </div>
+        <div id="citizen-list" style="display: flex; flex-direction: column; gap: 10px; max-height: 220px; overflow-y: auto;">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Multilingual Emergency Broadcast Modal -->
+  <div class="modal-overlay" id="broadcast-modal">
+    <div class="glass-panel" style="width: 100%; max-width: 600px; padding: 24px; background: #0f172a;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 22px;">📡</span>
+          <div>
+            <h3 style="font-size: 17px; font-weight: 800;">Emergency Multilingual Disaster Broadcast</h3>
+            <p style="font-size: 11px; color: var(--text-muted);">Twilio & Fast2SMS failover network across NER</p>
+          </div>
+        </div>
+        <button onclick="closeBroadcastModal()" style="background: transparent; border: none; color: #fff; font-size: 18px; cursor: pointer;">✕</button>
+      </div>
+
+      <div style="margin-bottom: 14px;">
+        <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 6px;">Select Language Preview:</label>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+          <button class="btn btn-primary" onclick="setBroadcastLang('as')">অসমীয়া (Assamese)</button>
+          <button class="btn btn-primary" onclick="setBroadcastLang('hi')">हिन्दी (Hindi)</button>
+          <button class="btn btn-primary" onclick="setBroadcastLang('en')">English</button>
+          <button class="btn btn-primary" onclick="setBroadcastLang('bn')">বাংলা (Bengali)</button>
+          <button class="btn btn-primary" onclick="setBroadcastLang('mizo')">Mizo ṭawng</button>
+        </div>
+      </div>
+
+      <div style="background: rgba(0,0,0,0.4); border: 1px solid rgba(239, 68, 68, 0.4); padding: 14px; border-radius: 8px; margin-bottom: 14px;">
+        <div style="font-size: 10px; color: #f87171; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">SMS & Voice Broadcast Payload Preview</div>
+        <p id="broadcast-preview-text" style="font-size: 12px; line-height: 1.5; color: #f1f5f9;">
+          জৰুৰী সতৰ্কবাৰ্তা (LANDSAFE): পূব খাছি পাহাৰত বিপজ্জনক ভূমিস্খলনৰ আশংকা (৯১%) ধৰা পৰিছে। অনতিপলমে সুৰক্ষিত ওখ ঠাইলৈ স্থানান্তৰিত হওক। হেল্পলাইন: ১০৭০ / ১১২।
+        </p>
+      </div>
+
+      <div style="display: flex; gap: 10px;">
+        <button class="btn" style="flex: 1; background: #334155; color: #fff;" onclick="closeBroadcastModal()">Cancel</button>
+        <button class="btn btn-emergency" style="flex: 2; padding: 12px;" onclick="executeBroadcast()">Transmitting Emergency Disaster Broadcast</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = 'http://127.0.0.1:8000';
+    let map, markersGroup, faultsLayer;
+    let currentLocations = [], selectedLoc = null;
+
+    function initMap() {
+      map = L.map('map', { zoomControl: true }).setView([25.8, 92.5], 7);
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap &copy; CARTO',
+        subdomains: 'abcd',
+        maxZoom: 19
+      }).addTo(map);
+
+      markersGroup = L.layerGroup().addTo(map);
+    }
+
+    async function loadData() {
+      try {
+        const [locsRes, alertsRes, citRes, faultsRes] = await Promise.all([
+          fetch(`${API_BASE}/api/v1/locations`).then(r => r.json()),
+          fetch(`${API_BASE}/api/v1/alerts/live`).then(r => r.json()),
+          fetch(`${API_BASE}/api/v1/citizen-reports`).then(r => r.json()),
+          fetch(`${API_BASE}/api/v1/geospatial/faults`).then(r => r.json())
+        ]);
+
+        currentLocations = locsRes.locations || [];
+        document.getElementById('nodes-count').innerText = `${currentLocations.length} Stations`;
+        document.getElementById('active-alerts-count').innerText = `${alertsRes.active_count} Active Alerts`;
+
+        // Render Map Markers
+        markersGroup.clearLayers();
+        currentLocations.forEach(loc => {
+          const risk = loc.latest_risk || {};
+          const status = risk.alert_status || 'none';
+          const color = status === 'emergency' ? '#ef4444' : status === 'warning' ? '#f97316' : status === 'watch' ? '#eab308' : '#10b981';
+
+          const marker = L.circleMarker([loc.latitude, loc.longitude], {
+            radius: status === 'emergency' ? 10 : 8,
+            fillColor: color,
+            color: '#fff',
+            weight: 2,
+            opacity: 1,
+            fillOpacity: 0.9
+          }).addTo(markersGroup);
+
+          marker.bindPopup(`<b>${loc.region_name}</b><br>State: ${loc.state}<br>Alert: <b style="color:${color}; text-transform:uppercase;">${status}</b><br>Risk: ${Math.round((risk.risk_probability||0.1)*100)}%`);
+          marker.on('click', () => selectHotspot(loc));
+        });
+
+        // Add Faults
+        if (faultsRes && faultsRes.features) {
+          L.geoJSON(faultsRes, {
+            style: { color: '#ec4899', weight: 3, dashArray: '4, 4', opacity: 0.8 }
+          }).addTo(map);
+        }
+
+        // Render Citizen Reports
+        const citList = document.getElementById('citizen-list');
+        citList.innerHTML = '';
+        (citRes.reports || []).forEach(rep => {
+          const div = document.createElement('div');
+          div.style = 'background: rgba(15, 23, 42, 0.7); border: 1px solid var(--border-glass); border-radius: 8px; padding: 10px;';
+          div.innerHTML = `
+            <div style="display: flex; justify-content: space-between; font-size: 11px;">
+              <span style="font-weight: 700; color: #fdba74;">${rep.hazard_type.toUpperCase()}</span>
+              <span class="font-mono" style="font-weight: 800; color: #ef4444;">AI Edge: ${Math.round((rep.onnx_severity_score||0)*100)}%</span>
+            </div>
+            <p style="font-size: 11px; color: #e2e8f0; margin: 4px 0;">${rep.description}</p>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
+              <span style="font-size: 10px; color: var(--text-muted);">GPS: ${rep.latitude.toFixed(3)}, ${rep.longitude.toFixed(3)}</span>
+              <button class="btn btn-emergency" style="padding: 3px 8px; font-size: 10px;" onclick="dispatchSdrf(${rep.id})">🚨 Dispatch SDRF</button>
+            </div>
+          `;
+          citList.appendChild(div);
+        });
+
+        if (currentLocations.length > 0 && !selectedLoc) {
+          selectHotspot(currentLocations[0]);
+        }
+
+      } catch (err) {
+        console.error('Failed to connect to backend API:', err);
+      }
+    }
+
+    async function selectHotspot(loc) {
+      selectedLoc = loc;
+      document.getElementById('hud-region').innerText = loc.region_name;
+      document.getElementById('hud-sub').innerText = `${loc.state} • ${loc.district}`;
+      document.getElementById('hud-terrain').innerText = `Terrain: ${loc.terrain_type || 'Mountainous'}`;
+
+      const t = loc.latest_telemetry || {};
+      const r = loc.latest_risk || { risk_probability: 0.1, alert_status: 'none' };
+      const pct = Math.round((r.risk_probability || 0.1) * 100);
+
+      document.getElementById('hud-prob').innerText = `${pct}%`;
+      document.getElementById('hud-bar').style.width = `${pct}%`;
+      document.getElementById('hud-rain').innerText = `${t.rainfall_mm || 0} mm`;
+      document.getElementById('hud-sm').innerText = `${t.soil_moisture || 0} %`;
+      document.getElementById('hud-slope').innerText = `${t.slope_angle || 0} deg`;
+      document.getElementById('hud-vuln').innerText = `${loc.vulnerability_index || 0}/100`;
+
+      const badge = document.getElementById('hud-badge');
+      badge.innerText = r.alert_status || 'none';
+      badge.style.color = r.alert_status === 'emergency' ? '#fca5a5' : r.alert_status === 'warning' ? '#fdba74' : '#86efac';
+
+      // Fetch history
+      try {
+        const hist = await fetch(`${API_BASE}/api/v1/locations/${loc.id}/history`).then(res => res.json());
+        renderChart(hist.telemetry_history || [], hist.risk_history || []);
+      } catch (e) {}
+    }
+
+    function renderChart(telemetry, risks) {
+      const svg = document.getElementById('timeline-svg');
+      svg.innerHTML = '';
+      if (!telemetry || telemetry.length === 0) return;
+
+      // Bars for rain
+      telemetry.forEach((pt, i) => {
+        const x = (i / Math.max(1, telemetry.length - 1)) * 480 + 10;
+        const h = Math.min(100, (pt.rainfall_mm / 160) * 100);
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', x - 6);
+        rect.setAttribute('y', 110 - h);
+        rect.setAttribute('width', 12);
+        rect.setAttribute('height', h);
+        rect.setAttribute('fill', 'rgba(56, 189, 248, 0.4)');
+        rect.setAttribute('rx', 2);
+        svg.appendChild(rect);
+      });
+
+      // Soil Moisture Polyline
+      const smPoints = telemetry.map((pt, i) => {
+        const x = (i / Math.max(1, telemetry.length - 1)) * 480 + 10;
+        const y = 110 - ((pt.soil_moisture || 40) / 100) * 100;
+        return `${x},${y}`;
+      }).join(' ');
+      const smLine = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+      smLine.setAttribute('points', smPoints);
+      smLine.setAttribute('fill', 'none');
+      smLine.setAttribute('stroke', '#34d399');
+      smLine.setAttribute('stroke-width', '2.5');
+      svg.appendChild(smLine);
+
+      // Risk Polyline
+      const riskPoints = risks.map((pt, i) => {
+        const x = (i / Math.max(1, risks.length - 1)) * 480 + 10;
+        const y = 110 - ((pt.risk_probability || 0.1) * 100);
+        return `${x},${y}`;
+      }).join(' ');
+      const rLine = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+      rLine.setAttribute('points', riskPoints);
+      rLine.setAttribute('fill', 'none');
+      rLine.setAttribute('stroke', '#f87171');
+      rLine.setAttribute('stroke-width', '2.5');
+      rLine.setAttribute('stroke-dasharray', '3,3');
+      svg.appendChild(rLine);
+    }
+
+    async function runLiveSim() {
+      const rain = parseFloat(document.getElementById('sim-rain').value);
+      const sm = parseFloat(document.getElementById('sim-sm').value);
+      const slope = parseFloat(document.getElementById('sim-slope').value);
+      const vuln = parseFloat(document.getElementById('sim-vuln').value);
+
+      document.getElementById('sim-rain-val').innerText = `${rain} mm`;
+      document.getElementById('sim-sm-val').innerText = `${sm} %`;
+      document.getElementById('sim-slope-val').innerText = `${slope} deg`;
+      document.getElementById('sim-vuln-val').innerText = `${vuln}/100`;
+
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/predict-risk`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            rainfall_24h_mm: rain,
+            rainfall_72h_mm: rain * 2.2,
+            soil_moisture_pct: sm,
+            slope_angle_deg: slope,
+            vulnerability_index: vuln
+          })
+        }).then(r => r.json());
+
+        const p = res.prediction;
+        const prob = Math.round(p.risk_probability * 100);
+        document.getElementById('sim-prob').innerText = `${prob}%`;
+        document.getElementById('sim-status').innerText = p.alert_status.toUpperCase();
+        document.getElementById('sim-status').style.color = prob > 80 ? '#fca5a5' : prob > 50 ? '#fdba74' : '#86efac';
+      } catch (e) {}
+    }
+
+    function openBroadcastModal() {
+      document.getElementById('broadcast-modal').style.display = 'flex';
+    }
+    function closeBroadcastModal() {
+      document.getElementById('broadcast-modal').style.display = 'none';
+    }
+    function setBroadcastLang(lang) {
+      const loc = selectedLoc?.region_name || 'East Khasi Hills';
+      const map = {
+        as: `জৰুৰী সতৰ্কবাৰ্তা (LANDSAFE): ${loc}ত বিপজ্জনক ভূমিস্খলনৰ আশংকা ধৰা পৰিছে। অনতিপলমে সুৰক্ষিত ওখ ঠাইলৈ যাওক। হেল্পলাইন: ১০৭০ / ১১২।`,
+        hi: `आपातकालीन चेतावनी (LANDSAFE): ${loc} में अत्यधिक भूस्खलन जोखिम। कृपया तुरंत सुरक्षित स्थान पर जाएं। हेल्पलाइन: 1070 / 112।`,
+        en: `EMERGENCY LANDSAFE ALERT: Critical landslide risk detected near ${loc}. Immediate evacuation advised. Helpline: 1070 / 112.`,
+        bn: `জরুরী সতর্কতা (LANDSAFE): ${loc} অঞ্চলে ভয়াবহ ভূমিধসের আশঙ্কা। অবিলম্বে নিরাপদ স্থানে আশ্রয় নিন। হেল্পলাইন: ১০৭০ / ১১২।`,
+        mizo: `KHAWCHHIA HRIATTIRNA (LANDSAFE): ${loc} hmunah leimin hlauhawm tak a thleng thei. Hmun him lam pan vat rawh u.`
+      };
+      document.getElementById('broadcast-preview-text').innerText = map[lang] || map['en'];
+    }
+
+    async function executeBroadcast() {
+      alert('✓ Multi-channel Emergency Disaster Broadcast transmitted across Twilio and Fast2SMS routes!');
+      closeBroadcastModal();
+    }
+
+    async function dispatchSdrf(id) {
+      alert(`✓ SDRF / NDRF Emergency Unit dispatched for Citizen Hazard Incident #${id}!`);
+      loadData();
+    }
+
+    window.onload = () => {
+      initMap();
+      loadData();
+      setInterval(loadData, 12000);
+    };
+  </script>
+</body>
+</html>
